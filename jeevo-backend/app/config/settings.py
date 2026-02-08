@@ -34,6 +34,20 @@ class Settings(BaseSettings):
     # Session Configuration
     SESSION_EXPIRE_MINUTES: int = 60
     
+    # AI/ML Configuration
+    USE_GROQ: bool = True
+    GROQ_API_KEY: Optional[str] = None
+    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+    GROQ_VISION_MODEL: str = "llama-3.2-90b-vision-preview"
+    
+    # OpenAI Configuration
+    OPENAI_API_KEY: Optional[str] = None
+    OPENAI_MODEL: str = "gpt-4o-mini"
+    OPENAI_VISION_MODEL: str = "gpt-4o-mini"
+    
+    # ElevenLabs TTS
+    ELEVENLABS_API_KEY: Optional[str] = None
+    
     class Config:
         env_file = ".env"
         case_sensitive = True

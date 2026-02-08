@@ -26,6 +26,8 @@ services:
     depends_on:
       - postgres
       - redis
+    env_file:
+      - .env
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432

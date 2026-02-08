@@ -14,3 +14,10 @@ alembic>=1.13.0
 # Redis/Caching dependencies
 redis>=5.0.1
 aioredis>=2.0.1
+
+# AI/ML APIs
+openai>=1.10.0
+elevenlabs>=1.0.0
+
+# Utilities
+python-multipart>=0.0.6

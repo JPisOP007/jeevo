@@ -1,5 +1,6 @@
 import httpx
 import logging
+import os
 from typing import Dict, Any
 from app.config.settings import settings
 from app.models.message import WhatsAppMessage, WhatsAppResponse
@@ -107,9 +108,16 @@ class WhatsAppService:
                 logger.error(f"Error sending message: {e}")
                 raise
     
-    async def send_audio_message(self, to_number: str, audio_url: str) -> Dict[str, Any]:
+    async def send_audio_message(self, to_number: str, audio_path: str = None, audio_url: str = None) -> Dict[str, Any]:
         """Send an audio message via WhatsApp"""
         url = f"{self.api_url}/{self.phone_number_id}/messages"
+        
+        # If local file path provided, you need to upload it first
+        # For now, we'll assume audio_url is provided
+        if audio_path and not audio_url:
+            # TODO: Upload audio file to a public URL or use WhatsApp media upload
+            logger.warning("Audio file path provided but upload not implemented. Need public URL.")
+            return {}
         
         payload = {
             "messaging_product": "whatsapp",
@@ -136,6 +144,67 @@ class WhatsAppService:
             except httpx.HTTPError as e:
                 logger.error(f"Error sending audio: {e}")
                 raise
+    
+    async def download_media(self, media_id: str, media_type: str) -> str:
+        """
+        Download media from WhatsApp and save locally
+        
+        Args:
+            media_id: WhatsApp media ID
+            media_type: Type of media (audio, image, video, document)
+            
+        Returns:
+            Local file path
+        """
+        try:
+            # Step 1: Get media URL
+            media_url_endpoint = f"{self.api_url}/{media_id}"
+            
+            async with httpx.AsyncClient() as client:
+                # Get media info
+                response = await client.get(
+                    media_url_endpoint,
+                    headers=self.headers,
+                    timeout=30.0
+                )
+                response.raise_for_status()
+                media_info = response.json()
+                media_url = media_info.get("url")
+                
+                if not media_url:
+                    raise ValueError("Media URL not found in response")
+                
+                # Step 2: Download media file
+                media_response = await client.get(
+                    media_url,
+                    headers=self.headers,
+                    timeout=60.0
+                )
+                media_response.raise_for_status()
+                
+                # Step 3: Save to local file
+                extension_map = {
+                    "audio": "ogg",
+                    "image": "jpg",
+                    "video": "mp4",
+                    "document": "pdf"
+                }
+                extension = extension_map.get(media_type, "bin")
+                
+                # Create temp directory if not exists
+                os.makedirs("temp", exist_ok=True)
+                
+                filepath = f"temp/media_{media_id}.{extension}"
+                
+                with open(filepath, "wb") as f:
+                    f.write(media_response.content)
+                
+                logger.info(f"Downloaded {media_type} to {filepath}")
+                return filepath
+                
+        except Exception as e:
+            logger.error(f"Error downloading media {media_id}: {e}")
+            raise
     
     async def mark_message_as_read(self, message_id: str) -> Dict[str, Any]:
         """Mark a message as read"""
