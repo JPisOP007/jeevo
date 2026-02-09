@@ -78,6 +78,15 @@ class Conversation(Base):
 
     created_at = Column(DateTime, default=datetime.utcnow)
     response_time_ms = Column(Integer, nullable=True)
+    
+    # Validation fields
+    validation_id = Column(Integer, ForeignKey("response_validations.id"), nullable=True)
+    validation_status = Column(String(50), nullable=True)  # low, medium, high, critical
+    confidence_score = Column(Float, nullable=True)
+    requires_escalation = Column(Boolean, default=False)
+    escalation_id = Column(Integer, ForeignKey("escalated_cases.id"), nullable=True)
+    high_risk_keywords = Column(JSON, nullable=True)
+    medical_disclaimer_shown = Column(Boolean, default=False)
 
     user = relationship("User", back_populates="conversations")
 
@@ -247,3 +256,136 @@ class ResponseMetric(Base):
 
     def __repr__(self):
         return f"<ResponseMetric {self.id} - {self.quality_rating}>"
+
+
+class ResponseValidation(Base):
+    """Store validation records for bot responses"""
+    __tablename__ = "response_validations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    message_id = Column(String(255), nullable=True, index=True)
+    
+    # Request/Response content
+    response_text = Column(Text, nullable=False)
+    user_query = Column(Text, nullable=True)
+    
+    # Validation metrics
+    confidence_score = Column(Float, nullable=True)
+    risk_level = Column(String(50), nullable=True)  # low, medium, high
+    
+    # Keywords detected
+    high_risk_keywords_detected = Column(JSON, nullable=True)
+    emergency_keywords_detected = Column(JSON, nullable=True)
+    
+    # Escalation flags
+    requires_escalation = Column(Boolean, default=False, index=True)
+    escalation_reason = Column(Text, nullable=True)
+    
+    # Approval status
+    approved_for_sending = Column(Boolean, default=True)
+    
+    # Metadata
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    def __repr__(self):
+        return f"<ResponseValidation {self.id} - {self.risk_level}>"
+
+
+class Expert(Base):
+    """Store expert/healthcare worker information"""
+    __tablename__ = "experts"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    phone_number = Column(String(15), unique=True, index=True, nullable=False)
+    name = Column(String(100), nullable=False)
+    specialization = Column(String(100), nullable=True)
+    expertise_area = Column(String(200), nullable=True)
+    
+    is_active = Column(Boolean, default=True, index=True)
+    is_available = Column(Boolean, default=True)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    escalations = relationship("EscalatedCase", back_populates="assigned_expert")
+    
+    def __repr__(self):
+        return f"<Expert {self.id} - {self.name}>"
+
+
+class EscalatedCase(Base):
+    """Store escalated cases for medical review"""
+    __tablename__ = "escalated_cases"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    validation_id = Column(Integer, ForeignKey("response_validations.id"), nullable=True)
+    assigned_expert_id = Column(Integer, ForeignKey("experts.id"), nullable=True, index=True)
+    
+    # Case details
+    original_query = Column(Text, nullable=False)
+    bot_response = Column(Text, nullable=True)
+    severity = Column(String(50), nullable=False)  # low, medium, high, critical
+    escalation_reason = Column(Text, nullable=False)
+    
+    # Keywords that triggered escalation
+    keywords_triggered = Column(JSON, nullable=True)
+    
+    # Status tracking
+    status = Column(String(50), default="open", index=True)  # open, in_progress, resolved, closed
+    resolution_notes = Column(Text, nullable=True)
+    
+    # Metadata
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    resolved_at = Column(DateTime, nullable=True)
+    
+    user = relationship("User")
+    assigned_expert = relationship("Expert", back_populates="escalations")
+    validation = relationship("ResponseValidation")
+    
+    def __repr__(self):
+        return f"<EscalatedCase {self.id} - {self.severity}>"
+
+
+class Disclaimer(Base):
+    """Store medical disclaimers based on risk levels"""
+    __tablename__ = "disclaimers"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    risk_level = Column(String(50), nullable=False, index=True)  # low, medium, high
+    language = Column(SQLEnum(LanguageEnum), default=LanguageEnum.ENGLISH, index=True)
+    
+    title = Column(String(200), nullable=True)
+    content = Column(Text, nullable=False)
+    
+    is_active = Column(Boolean, default=True)
+    priority = Column(Integer, default=1)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    def __repr__(self):
+        return f"<Disclaimer {self.id} - {self.risk_level}>"
+
+
+class DisclaimerTracking(Base):
+    """Track which users have seen which disclaimers"""
+    __tablename__ = "disclaimer_tracking"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    disclaimer_id = Column(Integer, ForeignKey("disclaimers.id"), nullable=False)
+    
+    context = Column(JSON, nullable=True)
+    message_id = Column(String(255), nullable=True)
+    
+    shown_at = Column(DateTime, default=datetime.utcnow, index=True)
+    
+    user = relationship("User")
+    disclaimer = relationship("Disclaimer")
+    
+    def __repr__(self):
+        return f"<DisclaimerTracking {self.user_id} - {self.disclaimer_id}>"
