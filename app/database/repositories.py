@@ -3,7 +3,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
+<<<<<<< HEAD
 from app.database.models import User, Conversation, Reminder, LocalRiskLevel, HealthAlert, FamilyMember, VaccinationRecord, ResponseMetric
+=======
+from app.database.models import (
+    User, Conversation, Reminder, LocalRiskLevel, HealthAlert, FamilyMember, 
+    VaccinationRecord, ResponseMetric, ResponseValidation, EscalatedCase, 
+    Expert, Disclaimer, DisclaimerTracking
+)
+>>>>>>> origin/jp2
 import logging
 
 logger = logging.getLogger(__name__)
@@ -507,4 +515,299 @@ class ResponseMetricRepository:
             "not_helpful": not_helpful,
             "accuracy_rate": round(helpful_rate, 2),
             "period_days": days,
+<<<<<<< HEAD
         }
+=======
+        }
+
+
+class ResponseValidationRepository:
+    """Repository for ResponseValidation operations"""
+    
+    @staticmethod
+    async def create_validation(
+        db: AsyncSession,
+        response_text: str,
+        **kwargs
+    ) -> ResponseValidation:
+        """Create a validation record"""
+        validation = ResponseValidation(response_text=response_text, **kwargs)
+        db.add(validation)
+        await db.commit()
+        await db.refresh(validation)
+        logger.info(f"Created validation record {validation.id}")
+        return validation
+    
+    @staticmethod
+    async def get_validation(
+        db: AsyncSession,
+        validation_id: int
+    ) -> Optional[ResponseValidation]:
+        """Get a validation record by ID"""
+        result = await db.execute(
+            select(ResponseValidation).where(ResponseValidation.id == validation_id)
+        )
+        return result.scalar_one_or_none()
+    
+    @staticmethod
+    async def get_user_validations(
+        db: AsyncSession,
+        user_id: int,
+        limit: int = 50
+    ) -> List[ResponseValidation]:
+        """Get user's validation records"""
+        result = await db.execute(
+            select(ResponseValidation)
+            .where(ResponseValidation.user_id == user_id)
+            .order_by(ResponseValidation.created_at.desc())
+            .limit(limit)
+        )
+        return result.scalars().all()
+    
+    @staticmethod
+    async def get_escalation_candidates(
+        db: AsyncSession,
+        limit: int = 50
+    ) -> List[ResponseValidation]:
+        """Get validations that require escalation"""
+        result = await db.execute(
+            select(ResponseValidation)
+            .where(ResponseValidation.requires_escalation == True)
+            .order_by(ResponseValidation.created_at.desc())
+            .limit(limit)
+        )
+        return result.scalars().all()
+
+
+class EscalatedCaseRepository:
+    """Repository for EscalatedCase operations"""
+    
+    @staticmethod
+    async def get_case(
+        db: AsyncSession,
+        case_id: int
+    ) -> Optional[EscalatedCase]:
+        """Get a case by ID"""
+        result = await db.execute(
+            select(EscalatedCase).where(EscalatedCase.id == case_id)
+        )
+        return result.scalar_one_or_none()
+    
+    @staticmethod
+    async def get_user_cases(
+        db: AsyncSession,
+        user_id: int,
+        status: Optional[str] = None,
+        limit: int = 50
+    ) -> List[EscalatedCase]:
+        """Get cases for a user"""
+        query = select(EscalatedCase).where(EscalatedCase.user_id == user_id)
+        
+        if status:
+            query = query.where(EscalatedCase.status == status)
+        
+        result = await db.execute(
+            query.order_by(EscalatedCase.created_at.desc()).limit(limit)
+        )
+        return result.scalars().all()
+    
+    @staticmethod
+    async def get_expert_cases(
+        db: AsyncSession,
+        expert_id: int,
+        status: Optional[str] = None,
+        limit: int = 50
+    ) -> List[EscalatedCase]:
+        """Get cases assigned to an expert"""
+        query = select(EscalatedCase).where(
+            EscalatedCase.assigned_expert_id == expert_id
+        )
+        
+        if status:
+            query = query.where(EscalatedCase.status == status)
+        
+        result = await db.execute(
+            query.order_by(EscalatedCase.created_at.asc()).limit(limit)
+        )
+        return result.scalars().all()
+    
+    @staticmethod
+    async def update_case_status(
+        db: AsyncSession,
+        case_id: int,
+        status: str,
+        resolution_notes: Optional[str] = None
+    ) -> Optional[EscalatedCase]:
+        """Update case status"""
+        case = await EscalatedCaseRepository.get_case(db, case_id)
+        
+        if case:
+            case.status = status
+            if resolution_notes:
+                case.resolution_notes = resolution_notes
+            if status == "resolved":
+                case.resolved_at = datetime.utcnow()
+            
+            await db.commit()
+            await db.refresh(case)
+            logger.info(f"Updated case {case_id} status to {status}")
+        
+        return case
+
+
+class ExpertRepository:
+    """Repository for Expert operations"""
+    
+    @staticmethod
+    async def create_expert(
+        db: AsyncSession,
+        phone_number: str,
+        name: str,
+        **kwargs
+    ) -> Expert:
+        """Create an expert"""
+        expert = Expert(phone_number=phone_number, name=name, **kwargs)
+        db.add(expert)
+        await db.commit()
+        await db.refresh(expert)
+        logger.info(f"Created expert: {name}")
+        return expert
+    
+    @staticmethod
+    async def get_expert(
+        db: AsyncSession,
+        expert_id: int
+    ) -> Optional[Expert]:
+        """Get expert by ID"""
+        result = await db.execute(
+            select(Expert).where(Expert.id == expert_id)
+        )
+        return result.scalar_one_or_none()
+    
+    @staticmethod
+    async def get_available_experts(db: AsyncSession) -> List[Expert]:
+        """Get all available experts"""
+        result = await db.execute(
+            select(Expert).where(
+                (Expert.is_active == True) &
+                (Expert.is_available == True)
+            )
+        )
+        return result.scalars().all()
+    
+    @staticmethod
+    async def get_all_experts(db: AsyncSession, active_only: bool = True) -> List[Expert]:
+        """Get all experts"""
+        query = select(Expert)
+        if active_only:
+            query = query.where(Expert.is_active == True)
+        
+        result = await db.execute(query.order_by(Expert.name))
+        return result.scalars().all()
+    
+    @staticmethod
+    async def update_expert_availability(
+        db: AsyncSession,
+        expert_id: int,
+        is_available: bool
+    ) -> Optional[Expert]:
+        """Update expert availability"""
+        expert = await ExpertRepository.get_expert(db, expert_id)
+        
+        if expert:
+            expert.is_available = is_available
+            await db.commit()
+            await db.refresh(expert)
+        
+        return expert
+
+
+class DisclaimerRepository:
+    """Repository for Disclaimer operations"""
+    
+    @staticmethod
+    async def create_disclaimer(
+        db: AsyncSession,
+        risk_level: str,
+        language: str,
+        content: str,
+        **kwargs
+    ) -> Disclaimer:
+        """Create a disclaimer"""
+        disclaimer = Disclaimer(
+            risk_level=risk_level,
+            language=language,
+            content=content,
+            **kwargs
+        )
+        db.add(disclaimer)
+        await db.commit()
+        await db.refresh(disclaimer)
+        logger.info(f"Created disclaimer for {risk_level} in {language}")
+        return disclaimer
+    
+    @staticmethod
+    async def get_disclaimer(
+        db: AsyncSession,
+        disclaimer_id: int
+    ) -> Optional[Disclaimer]:
+        """Get disclaimer by ID"""
+        result = await db.execute(
+            select(Disclaimer).where(Disclaimer.id == disclaimer_id)
+        )
+        return result.scalar_one_or_none()
+    
+    @staticmethod
+    async def get_active_disclaimers(
+        db: AsyncSession,
+        risk_level: str,
+        language: str
+    ) -> List[Disclaimer]:
+        """Get active disclaimers for risk level and language"""
+        result = await db.execute(
+            select(Disclaimer).where(
+                (Disclaimer.risk_level == risk_level) &
+                (Disclaimer.language == language) &
+                (Disclaimer.is_active == True)
+            ).order_by(Disclaimer.priority.desc())
+        )
+        return result.scalars().all()
+
+
+class DisclaimerTrackingRepository:
+    """Repository for DisclaimerTracking operations"""
+    
+    @staticmethod
+    async def create_tracking(
+        db: AsyncSession,
+        user_id: int,
+        disclaimer_id: int,
+        **kwargs
+    ) -> DisclaimerTracking:
+        """Track disclaimer shown to user"""
+        tracking = DisclaimerTracking(
+            user_id=user_id,
+            disclaimer_id=disclaimer_id,
+            **kwargs
+        )
+        db.add(tracking)
+        await db.commit()
+        await db.refresh(tracking)
+        logger.info(f"Tracked disclaimer {disclaimer_id} for user {user_id}")
+        return tracking
+    
+    @staticmethod
+    async def get_user_disclaimer_history(
+        db: AsyncSession,
+        user_id: int,
+        limit: int = 50
+    ) -> List[DisclaimerTracking]:
+        """Get disclaimer history for user"""
+        result = await db.execute(
+            select(DisclaimerTracking)
+            .where(DisclaimerTracking.user_id == user_id)
+            .order_by(DisclaimerTracking.shown_at.desc())
+            .limit(limit)
+        )
+        return result.scalars().all()
+>>>>>>> origin/jp2

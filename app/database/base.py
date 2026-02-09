@@ -6,6 +6,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+<<<<<<< HEAD
 # Handle SQLite for local development
 db_url = settings.DATABASE_URL
 if db_url.startswith("sqlite://"):
@@ -26,6 +27,14 @@ else:
         future=True,
         pool_pre_ping=True,
     )
+=======
+engine = create_async_engine(
+    settings.DATABASE_URL,
+    echo=settings.DATABASE_ECHO,
+    future=True,
+    pool_pre_ping=True,
+)
+>>>>>>> origin/jp2
 
 AsyncSessionLocal = async_sessionmaker(
     engine,
