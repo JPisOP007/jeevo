@@ -5,12 +5,15 @@ import os
 from typing import Dict, Optional
 from datetime import datetime
 
+from app.config.settings import settings
+
 logger = logging.getLogger(__name__)
 
 class EnvironmentalService:
 
     def __init__(self):
-        self.openweather_key = os.getenv("OPENWEATHER_API_KEY", "")
+        self.openweather_key = settings.OPENWEATHER_API_KEY or ""
+        self.use_mock_aqi = os.getenv("USE_MOCK_AQI", "false").lower() == "true"
 
     async def get_weather_health_risks(self, lat: float, lon: float) -> Dict:
 
@@ -84,8 +87,16 @@ class EnvironmentalService:
     async def get_aqi_health_risks(self, lat: float, lon: float, city: str = "Unknown") -> Dict:
 
         if not self.openweather_key:
-
-            return self._mock_aqi_data(city)
+            logger.warning("OpenWeather AQI API key not configured")
+            if self.use_mock_aqi:
+                return self._mock_aqi_data(city)
+            return {
+                "city": city,
+                "risk_level": "unknown",
+                "alerts": [],
+                "error": "AQI API not configured",
+                "timestamp": datetime.utcnow().isoformat()
+            }
 
         try:
             async with httpx.AsyncClient() as client:
@@ -101,17 +112,44 @@ class EnvironmentalService:
 
                 if response.status_code == 200:
                     data = response.json()
-                    aqi_level = data["list"][0]["main"]["aqi"]
-
-                    aqi_map = {1: 50, 2: 100, 3: 150, 4: 250, 5: 350}
-                    aqi_value = aqi_map.get(aqi_level, 150)
+                    components = data["list"][0]["components"]
+                    
+                    # Calculate accurate US EPA AQI from PM2.5 concentration
+                    pm25 = components.get("pm2_5", 0)
+                    if pm25 > 0:
+                        aqi_value = self._calculate_us_aqi_from_pm25(pm25)
+                    else:
+                        # Fallback to index-based mapping if PM2.5 is unavailable
+                        aqi_level = data["list"][0]["main"]["aqi"]
+                        aqi_map = {1: 50, 2: 100, 3: 150, 4: 250, 5: 350}
+                        aqi_value = aqi_map.get(aqi_level, 150)
+                    
                     return self._analyze_aqi_risks(aqi_value, city)
-                else:
+
+                logger.warning(
+                    "AQI API error %s: %s", response.status_code, response.text
+                )
+                if self.use_mock_aqi:
                     return self._mock_aqi_data(city)
+                return {
+                    "city": city,
+                    "risk_level": "unknown",
+                    "alerts": [],
+                    "error": f"AQI API error {response.status_code}",
+                    "timestamp": datetime.utcnow().isoformat()
+                }
 
         except Exception as e:
             logger.error(f"AQI API error: {e}")
-            return self._mock_aqi_data(city)
+            if self.use_mock_aqi:
+                return self._mock_aqi_data(city)
+            return {
+                "city": city,
+                "risk_level": "unknown",
+                "alerts": [],
+                "error": str(e),
+                "timestamp": datetime.utcnow().isoformat()
+            }
 
     def _analyze_aqi_risks(self, aqi_value: int, city: str) -> Dict:
 
@@ -153,6 +191,39 @@ class EnvironmentalService:
         import random
         aqi_value = random.randint(80, 180)
         return self._analyze_aqi_risks(aqi_value, city)
+
+    def _calculate_us_aqi_from_pm25(self, pm25: float) -> int:
+        """
+        Calculate US EPA AQI from PM2.5 concentration (μg/m³).
+        Based on official EPA breakpoints for accurate AQI calculation.
+        
+        Reference: https://www.airnow.gov/aqi/aqi-calculator-concentration/
+        """
+        # EPA AQI breakpoints for PM2.5 (24-hour average)
+        # Format: (C_low, C_high, I_low, I_high)
+        breakpoints = [
+            (0.0, 12.0, 0, 50),        # Good
+            (12.1, 35.4, 51, 100),     # Moderate
+            (35.5, 55.4, 101, 150),    # Unhealthy for Sensitive Groups
+            (55.5, 150.4, 151, 200),   # Unhealthy
+            (150.5, 250.4, 201, 300),  # Very Unhealthy
+            (250.5, 350.4, 301, 400),  # Hazardous
+            (350.5, 500.4, 401, 500),  # Hazardous (higher)
+        ]
+        
+        for c_low, c_high, i_low, i_high in breakpoints:
+            if c_low <= pm25 <= c_high:
+                # Linear interpolation formula:
+                # AQI = [(I_high - I_low) / (C_high - C_low)] * (C - C_low) + I_low
+                aqi = ((i_high - i_low) / (c_high - c_low)) * (pm25 - c_low) + i_low
+                return int(round(aqi))
+        
+        # If PM2.5 exceeds all breakpoints, return maximum AQI
+        if pm25 > 500.4:
+            return 500
+        
+        # Default fallback
+        return 150
 
     async def get_comprehensive_risk_assessment(self, user_location: Dict) -> Dict:
 
