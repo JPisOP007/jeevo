@@ -11,19 +11,8 @@ from app.config.settings import settings
 from app.models.message import WhatsAppMessage
 from app.services.whatsapp_service import whatsapp_service
 from app.services.cache_service import cache_service
-<<<<<<< HEAD
 from app.database.base import get_db
 from app.database.repositories import UserRepository, ConversationRepository, FamilyMemberRepository
-=======
-from app.services.medical_validation_service import MedicalValidationService
-from app.services.escalation_service import EscalationService
-from app.services.disclaimer_service import DisclaimerService
-from app.database.base import get_db
-from app.database.repositories import (
-    UserRepository, ConversationRepository, FamilyMemberRepository,
-    ResponseValidationRepository
-)
->>>>>>> origin/jp2 removed
 from app.logic.multimodal_router import MultimodalRouter
 from app.logic.language_manager import LanguageManager
 from app.services.jeevo_onboarding import jeevo_onboarding
@@ -955,129 +944,6 @@ async def process_message(message: WhatsAppMessage, db: AsyncSession) -> None:
             user_location=user_location
         )
 
-<<<<<<< HEAD
-=======
-        # ==================== MEDICAL VALIDATION ====================
-        logger.info(f"[VALIDATION] Starting validation for message: {message.message_id}")
-        
-        # Estimate confidence based on response type and content
-        confidence_score = 0.7 if response.get("type") != "error" else 0.2
-        
-        validation_result = MedicalValidationService.validate_response(
-            user_query=message.text_content or (caption if caption else ""),
-            bot_response=response.get("content", ""),
-            confidence_score=confidence_score
-        )
-        
-        logger.info(
-            f"[VALIDATION] Result - Risk: {validation_result.risk_level}, "
-            f"Escalation: {validation_result.requires_escalation}, "
-            f"Confidence: {validation_result.confidence_score}"
-        )
-        
-        # Save validation record
-        validation_record = await ResponseValidationRepository.create_validation(
-            db,
-            response_text=response.get("content", ""),
-            user_id=user.id,
-            message_id=message.message_id,
-            user_query=message.text_content or (caption if caption else ""),
-            confidence_score=validation_result.confidence_score,
-            risk_level=validation_result.risk_level,
-            high_risk_keywords_detected=validation_result.high_risk_keywords_detected,
-            emergency_keywords_detected=validation_result.emergency_keywords_detected,
-            requires_escalation=validation_result.requires_escalation,
-            escalation_reason=validation_result.validation_message if validation_result.requires_escalation else None,
-            approved_for_sending=not validation_result.requires_escalation
-        )
-        
-        # Get disclaimer if needed
-        disclaimer_shown = False
-        disclaimer_text = ""
-        
-        if validation_result.risk_level != "low":
-            logger.info(f"[DISCLAIMER] Getting disclaimer for risk level: {validation_result.risk_level}")
-            
-            disclaimer = await DisclaimerService.get_disclaimer_for_risk_level(
-                db,
-                risk_level=validation_result.risk_level,
-                language=user_language
-            )
-            
-            if disclaimer:
-                # Track disclaimer shown
-                await DisclaimerService.track_disclaimer_shown(
-                    db,
-                    user_id=user.id,
-                    disclaimer_id=disclaimer.id,
-                    context={
-                        "risk_level": validation_result.risk_level,
-                        "keywords": validation_result.high_risk_keywords_detected
-                    },
-                    message_id=message.message_id
-                )
-                
-                disclaimer_text = f"\n\n{disclaimer.content}"
-                disclaimer_shown = True
-                logger.info(f"[DISCLAIMER] Disclaimer shown to user {user.id}")
-        
-        # Prepare final response with disclaimer
-        final_response_content = response.get("content", "") + disclaimer_text
-        
-        # ==================== ESCALATION ====================
-        escalation_id = None
-        is_escalated = False
-        escalation_reason = None
-        
-        if validation_result.requires_escalation:
-            logger.info(f"[ESCALATION] Escalating case - Risk: {validation_result.risk_level}")
-            
-            escalated_case = await EscalationService.escalate_case(
-                db=db,
-                user_id=user.id,
-                original_query=message.text_content or (caption if caption else ""),
-                bot_response=response.get("content", ""),
-                severity=validation_result.risk_level,
-                reason=validation_result.validation_message,
-                keywords_triggered=validation_result.high_risk_keywords_detected + 
-                                 validation_result.emergency_keywords_detected,
-                validation_id=validation_record.id
-            )
-            
-            if escalated_case:
-                escalation_id = escalated_case.id
-                is_escalated = True
-                escalation_reason = escalated_case.escalation_reason
-                logger.info(
-                    f"[ESCALATION] Case created: {escalated_case.id}, "
-                    f"Status: {escalated_case.status}"
-                )
-                
-                # Notify expert if assigned
-                if escalated_case.assigned_expert_id:
-                    expert_message = (
-                        f"🚨 New escalated case assigned to you:\n"
-                        f"Case ID: {escalated_case.id}\n"
-                        f"Severity: {escalated_case.severity}\n"
-                        f"Reason: {escalated_case.escalation_reason}\n"
-                        f"Patient: {user.phone_number}"
-                    )
-                    try:
-                        from app.database.repositories import ExpertRepository
-                        expert = await ExpertRepository.get_expert(db, escalated_case.assigned_expert_id)
-                        if expert:
-                            await whatsapp_service.send_text_message(
-                                to_number=expert.phone_number,
-                                text=expert_message
-                            )
-                            logger.info(f"[ESCALATION] Expert notified")
-                    except Exception as e:
-                        logger.warning(f"[ESCALATION] Could not notify expert: {e}")
-        
-        # Update response object with final content
-        response["content"] = final_response_content
-
->>>>>>> origin/jp2 removed
         # For audio inputs, use STT-detected language (if available) for responses
         # This ensures text and audio are in the language the user spoke
         response_language = response.get("language", user_language)
@@ -1095,10 +961,7 @@ async def process_message(message: WhatsAppMessage, db: AsyncSession) -> None:
             if is_medical_related:
                 try:
                     logger.info(f"[AUTO-VOICE] Generating audio for medical response in {response_language} (audio input)")
-<<<<<<< HEAD
                     logger.info(f"[AUTO-VOICE] Response text length: {len(response['content'])} characters")
-=======
->>>>>>> origin/jp2 removed
                     from app.services.tts_fallback_service import tts_fallback_service
 
                     audio_bytes, provider = await tts_fallback_service.text_to_speech_with_fallback(
@@ -1113,7 +976,6 @@ async def process_message(message: WhatsAppMessage, db: AsyncSession) -> None:
                         with open(output_path, "wb") as f:
                             f.write(audio_bytes)
 
-<<<<<<< HEAD
                         # Verify file was written
                         if os.path.exists(output_path):
                             file_size = os.path.getsize(output_path)
@@ -1133,18 +995,6 @@ async def process_message(message: WhatsAppMessage, db: AsyncSession) -> None:
                     logger.warning(f"[AUTO-VOICE] ❌ Failed to auto-generate audio: {e}, using text fallback")
                     import traceback
                     logger.warning(f"[AUTO-VOICE] Traceback: {traceback.format_exc()}")
-=======
-                        # Keep response type as text so we send the textual reply first,
-                        # but attach an audio_path so we can send audio afterwards.
-                        response["audio_path"] = output_path
-                        response["audio_provider"] = provider
-                        logger.info(f"[AUTO-VOICE] Generated audio via {provider}")
-                    else:
-                        logger.warning("[AUTO-VOICE] No audio generated, falling back to text")
-
-                except Exception as e:
-                    logger.warning(f"[AUTO-VOICE] Failed to auto-generate audio: {e}, using text fallback")
->>>>>>> origin/jp2 removed
 
         if response["type"] == "text":
 
@@ -1164,20 +1014,12 @@ async def process_message(message: WhatsAppMessage, db: AsyncSession) -> None:
                         audio_path=response["audio_path"]
                     )
                     bot_response = f"[Voice Response] {response['content']}"
-<<<<<<< HEAD
                     logger.info(f"[VOICE] ✅ Audio message sent successfully")
 
                     # Clean up temp file after successful send
                     try:
                         # Wait longer to ensure WhatsApp completes upload
                         await asyncio.sleep(2.0)
-=======
-                    logger.info(f"[VOICE] Audio message sent successfully")
-
-                    # Clean up temp file after successful send
-                    try:
-                        await asyncio.sleep(0.5)
->>>>>>> origin/jp2 removed
                         if os.path.exists(response["audio_path"]):
                             os.remove(response["audio_path"])
                             logger.debug(f"[VOICE] Cleaned up temp file: {response['audio_path']}")
@@ -1185,11 +1027,7 @@ async def process_message(message: WhatsAppMessage, db: AsyncSession) -> None:
                         logger.warning(f"[VOICE] Failed to clean up temp file: {cleanup_error}")
 
                 except Exception as e:
-<<<<<<< HEAD
                     logger.error(f"[VOICE] ❌ Failed to send voice message: {e}", exc_info=True)
-=======
-                    logger.error(f"[VOICE] Failed to send voice message: {e}", exc_info=True)
->>>>>>> origin/jp2 removed
                     # Fallback to text if voice fails (text already sent)
                     bot_response = f"[Voice Failed→Text] {response['content']}"
 
@@ -1222,20 +1060,12 @@ async def process_message(message: WhatsAppMessage, db: AsyncSession) -> None:
 
                     # Mark the logged response to indicate an audio was sent too
                     bot_response = f"[Voice Response] {response['content']}"
-<<<<<<< HEAD
                     logger.info(f"[VOICE] ✅ Audio message sent successfully")
 
                     # Clean up temp file after successful send (with delay to ensure upload completes)
                     try:
                         # Wait longer to ensure WhatsApp completes upload
                         await asyncio.sleep(2.0)
-=======
-                    logger.info(f"[VOICE] Audio message sent successfully")
-
-                    # Clean up temp file after successful send (with delay to ensure upload completes)
-                    try:
-                        await asyncio.sleep(0.5)  # Give upload time to finish
->>>>>>> origin/jp2 removed
                         if os.path.exists(response["audio_path"]):
                             os.remove(response["audio_path"])
                             logger.debug(f"[VOICE] Cleaned up temp file: {response['audio_path']}")
@@ -1243,11 +1073,7 @@ async def process_message(message: WhatsAppMessage, db: AsyncSession) -> None:
                         logger.warning(f"[VOICE] Failed to clean up temp file: {cleanup_error}")
 
                 except Exception as e:
-<<<<<<< HEAD
                     logger.error(f"[VOICE] ❌ Failed to send voice message: {e}", exc_info=True)
-=======
-                    logger.error(f"[VOICE] Failed to send voice message: {e}", exc_info=True)
->>>>>>> origin/jp2 removed
                     # Fallback to text if voice fails
                     fallback_text = f"Audio response unavailable. {response['content']}"
                     await whatsapp_service.send_text_message(
@@ -1283,18 +1109,7 @@ async def process_message(message: WhatsAppMessage, db: AsyncSession) -> None:
                 user_message=message.text_content or f"[{message.message_type}]",
                 bot_response=bot_response,
                 media_id=message.media_id,
-<<<<<<< HEAD
                 response_time_ms=response_time_ms
-=======
-                response_time_ms=response_time_ms,
-                validation_id=validation_record.id,
-                validation_status=validation_result.risk_level,
-                confidence_score=validation_result.confidence_score,
-                requires_escalation=validation_result.requires_escalation,
-                escalation_id=escalation_id,
-                high_risk_keywords=validation_result.high_risk_keywords_detected + validation_result.emergency_keywords_detected,
-                medical_disclaimer_shown=disclaimer_shown
->>>>>>> origin/jp2 removed
             )
         except Exception as e:
             logger.error(f"[DB] Failed to log conversation: {e}")

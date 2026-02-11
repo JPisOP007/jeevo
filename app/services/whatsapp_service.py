@@ -167,7 +167,6 @@ class WhatsAppService:
     async def send_audio_message(self, to_number: str, audio_path: str = None, audio_url: str = None) -> Dict[str, Any]:
 
         url = f"{self.api_url}/{self.phone_number_id}/messages"
-<<<<<<< HEAD
         uploaded_media_id = None
 
         if audio_path and not audio_url:
@@ -206,25 +205,6 @@ class WhatsAppService:
                     }
                     
                     async with httpx.AsyncClient() as client:
-=======
-
-        if audio_path and not audio_url:
-            try:
-                logger.info(f"Uploading audio file: {audio_path}")
-                
-                if not os.path.exists(audio_path):
-                    raise FileNotFoundError(f"Audio file not found: {audio_path}")
-                
-                with open(audio_path, "rb") as audio_file:
-                    upload_url = f"{self.api_url}/{self.phone_number_id}/media"
-                    
-                    files = {
-                        "file": (os.path.basename(audio_path), audio_file, "audio/ogg")
-                    }
-                    
-                    async with httpx.AsyncClient() as client:
-                        logger.debug(f"Posting to {upload_url}")
->>>>>>> origin/jp2 removed
                         upload_response = await client.post(
                             upload_url,
                             headers={
@@ -235,7 +215,6 @@ class WhatsAppService:
                             timeout=120.0
                         )
                         
-<<<<<<< HEAD
                         logger.info(f"[AUDIO] Upload response status: {upload_response.status_code}")
                         
                         if upload_response.status_code not in [200, 201]:
@@ -255,21 +234,11 @@ class WhatsAppService:
                         
                         upload_data = upload_response.json()
                         logger.debug(f"[AUDIO] Upload response: {upload_data}")
-=======
-                        if upload_response.status_code not in [200, 201]:
-                            error_detail = upload_response.text
-                            logger.error(f"Upload failed with {upload_response.status_code}: {error_detail}")
-                            raise ValueError(f"Media upload failed: {error_detail}")
-                        
-                        upload_data = upload_response.json()
-                        logger.debug(f"Upload response: {upload_data}")
->>>>>>> origin/jp2 removed
                         
                         # WhatsApp returns media ID in the response
                         media_id = upload_data.get("id") or upload_data.get("h")
                         
                         if not media_id:
-<<<<<<< HEAD
                             logger.error(f"[AUDIO] No media ID in response: {upload_data}")
                             raise ValueError(f"Failed to get media ID from upload response")
                         
@@ -286,45 +255,6 @@ class WhatsAppService:
 
         # If we have a media ID from upload, use it. Otherwise require audio_url
         if not uploaded_media_id and not audio_url:
-=======
-                            logger.error(f"No media ID in response: {upload_data}")
-                            raise ValueError(f"Failed to get media ID from upload response")
-                        
-                        logger.info(f"Audio uploaded successfully with ID: {media_id}")
-                        
-                        # Fetch the media URL using the media ID
-                        media_url_endpoint = f"{self.api_url}/{media_id}"
-                        media_response = await client.get(
-                            media_url_endpoint,
-                            headers=self.headers,
-                            timeout=30.0
-                        )
-                        
-                        if media_response.status_code == 200:
-                            media_info = media_response.json()
-                            audio_url = media_info.get("url")
-                            if audio_url:
-                                logger.info(f"Retrieved media URL: {audio_url}")
-                            else:
-                                logger.warning(f"No URL in media response, will try using media ID")
-                        else:
-                            logger.warning(f"Could not fetch media URL, will use media ID as fallback")
-                        
-                        # Preserve media_id and prefer sending by media ID when possible
-                        uploaded_media_id = media_id
-                        # If no URL, keep audio_url as None so we send by id
-                        if not audio_url:
-                            audio_url = None
-            
-            except FileNotFoundError as e:
-                logger.error(f"Audio file error: {e}")
-                raise ValueError(f"Audio file not found: {str(e)}")
-            except Exception as e:
-                logger.error(f"Error uploading audio file: {e}", exc_info=True)
-                raise ValueError(f"Could not upload audio file: {str(e)}")
-
-        if not audio_url:
->>>>>>> origin/jp2 removed
             raise ValueError("Must provide either audio_path or audio_url")
 
         # Build payload: prefer sending using uploaded media ID (more reliable),
@@ -346,28 +276,19 @@ class WhatsAppService:
         except Exception:
             is_voice_native = False
 
-<<<<<<< HEAD
         # Use uploaded media ID if available, otherwise use URL
         if uploaded_media_id:
             logger.info(f"[AUDIO] Using uploaded media ID: {uploaded_media_id}")
-=======
-        if 'uploaded_media_id' in locals() and uploaded_media_id:
->>>>>>> origin/jp2 removed
             audio_obj = {"id": uploaded_media_id}
             if is_voice_native:
                 audio_obj["voice"] = True
             payload["audio"] = audio_obj
-<<<<<<< HEAD
         elif audio_url:
             logger.info(f"[AUDIO] Using media URL")
-=======
-        else:
->>>>>>> origin/jp2 removed
             audio_obj = {"link": audio_url}
             if is_voice_native:
                 audio_obj["voice"] = True
             payload["audio"] = audio_obj
-<<<<<<< HEAD
         else:
             raise ValueError("[AUDIO] No media ID or URL available for sending")
 
@@ -375,13 +296,6 @@ class WhatsAppService:
             try:
                 logger.info(f"[AUDIO] Sending audio message to {to_number}")
                 logger.debug(f"[AUDIO] Payload: {payload}")
-=======
-
-        async with httpx.AsyncClient() as client:
-            try:
-                logger.debug(f"Sending audio message to {to_number}")
-                logger.debug(f"Payload: {payload}")
->>>>>>> origin/jp2 removed
                 response = await client.post(
                     url,
                     headers=self.headers,
@@ -389,7 +303,6 @@ class WhatsAppService:
                     timeout=30.0
                 )
                 response.raise_for_status()
-<<<<<<< HEAD
                 logger.info(f"[AUDIO] ✅ Audio message sent successfully to {to_number}")
                 return response.json()
 
@@ -400,17 +313,6 @@ class WhatsAppService:
                 raise
             except httpx.HTTPError as e:
                 logger.error(f"[AUDIO] Error sending audio message: {e}", exc_info=True)
-=======
-                logger.info(f"Audio message sent successfully to {to_number}")
-                return response.json()
-
-            except httpx.HTTPStatusError as e:
-                logger.error(f"Error sending audio message: {e}")
-                logger.error(f"Response text: {e.response.text}")
-                raise
-            except httpx.HTTPError as e:
-                logger.error(f"Error sending audio message: {e}", exc_info=True)
->>>>>>> origin/jp2 removed
                 raise
 
     async def download_media(self, media_id: str, media_type: str) -> str:

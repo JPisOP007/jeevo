@@ -30,7 +30,6 @@ class TTSFallbackService:
         gender: str = "female"
     ) -> Tuple[Optional[bytes], str]:
 
-<<<<<<< HEAD
         logger.info(f"[TTS] Attempting TTS with fallback chain for language: {language}")
         logger.info(f"[TTS] Text length: {len(text)} characters")
 
@@ -46,22 +45,10 @@ class TTSFallbackService:
             return audio_bytes, "elevenlabs"
         except Exception as e:
             logger.warning(f"[TTS] ElevenLabs TTS failed: {e}")
-=======
-        logger.info(f"Attempting TTS with fallback chain for language: {language}")
-
-        try:
-            logger.debug("Trying ElevenLabs TTS...")
-            audio_bytes = self.elevenlabs.text_to_speech(text, language, gender)
-            logger.info("✅ ElevenLabs TTS succeeded")
-            return audio_bytes, "elevenlabs"
-        except Exception as e:
-            logger.warning(f"ElevenLabs TTS failed: {e}")
->>>>>>> origin/jp2 removed
 
         for provider in self.fallback_providers:
             try:
                 if provider == "gtts":
-<<<<<<< HEAD
                     logger.debug("[TTS] Trying Google TTS fallback...")
                     audio_bytes = self._gtts_generate(text, language)
                     
@@ -77,18 +64,6 @@ class TTSFallbackService:
                 continue
 
         logger.error("[TTS] ❌ All TTS providers failed. No audio generated.")
-=======
-                    logger.debug("Trying Google TTS fallback...")
-                    audio_bytes = self._gtts_generate(text, language)
-                    logger.info("✅ Google TTS succeeded")
-                    return audio_bytes, "gtts"
-                
-            except Exception as e:
-                logger.warning(f"{provider} TTS failed: {e}")
-                continue
-
-        logger.error("❌ All TTS providers failed. No audio generated.")
->>>>>>> origin/jp2 removed
         return None, "none"
 
     def _gtts_generate(self, text: str, language: str = "en") -> bytes:

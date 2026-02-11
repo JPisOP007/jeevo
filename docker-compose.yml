@@ -10,11 +10,7 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
-<<<<<<< HEAD
-      - "5433:5432"   # ✅ changed from 5432 to 5433
-=======
-      - "5432:5432"
->>>>>>> origin/jp2
+      - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
 
@@ -22,11 +18,7 @@ services:
     image: redis:7
     container_name: jeevo-redis
     ports:
-<<<<<<< HEAD
       - "6380:6379"
-=======
-      - "6379:6379"
->>>>>>> origin/jp2
 
   backend:
     build: .
