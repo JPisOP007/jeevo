@@ -55,11 +55,7 @@ class VisionAnalyzer:
                 api_key=api_key,
                 base_url="https://api.groq.com/openai/v1"
             )
-<<<<<<< HEAD
             self.model = os.getenv("GROQ_VISION_MODEL", "llama-3.2-90b-vision-preview")
-=======
-            self.model = os.getenv("GROQ_VISION_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
->>>>>>> origin/jp2
             logger.info(f"Initialized Vision analyzer with Groq: {self.model}")
         else:
             api_key = api_key or os.getenv("OPENAI_API_KEY")

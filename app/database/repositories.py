@@ -3,15 +3,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
-<<<<<<< HEAD
-from app.database.models import User, Conversation, Reminder, LocalRiskLevel, HealthAlert, FamilyMember, VaccinationRecord, ResponseMetric
-=======
 from app.database.models import (
     User, Conversation, Reminder, LocalRiskLevel, HealthAlert, FamilyMember, 
     VaccinationRecord, ResponseMetric, ResponseValidation, EscalatedCase, 
     Expert, Disclaimer, DisclaimerTracking
 )
->>>>>>> origin/jp2
 import logging
 
 logger = logging.getLogger(__name__)
@@ -515,9 +511,6 @@ class ResponseMetricRepository:
             "not_helpful": not_helpful,
             "accuracy_rate": round(helpful_rate, 2),
             "period_days": days,
-<<<<<<< HEAD
-        }
-=======
         }
 
 
@@ -810,4 +803,328 @@ class DisclaimerTrackingRepository:
             .limit(limit)
         )
         return result.scalars().all()
->>>>>>> origin/jp2
+
+
+# ============================================================================
+# Medical Knowledge Base Repositories (New - for source-based validation)
+# ============================================================================
+
+class MedicalSourceRepository:
+    """Repository for MedicalSource operations"""
+    
+    @staticmethod
+    async def create_source(
+        db: AsyncSession,
+        name: str,
+        url: str,
+        description: str,
+        authority_level: int = 1
+    ):
+        """Create a medical source"""
+        from app.database.models import MedicalSource
+        
+        source = MedicalSource(
+            name=name,
+            url=url,
+            description=description,
+            authority_level=authority_level
+        )
+        db.add(source)
+        await db.commit()
+        await db.refresh(source)
+        logger.info(f"Created medical source: {name}")
+        return source
+    
+    @staticmethod
+    async def get_source(db: AsyncSession, source_id: int):
+        """Get source by ID"""
+        from app.database.models import MedicalSource
+        
+        result = await db.execute(
+            select(MedicalSource).where(MedicalSource.id == source_id)
+        )
+        return result.scalar_one_or_none()
+    
+    @staticmethod
+    async def get_source_by_name(db: AsyncSession, name: str):
+        """Get source by name"""
+        from app.database.models import MedicalSource
+        
+        result = await db.execute(
+            select(MedicalSource).where(MedicalSource.name == name)
+        )
+        return result.scalar_one_or_none()
+    
+    @staticmethod
+    async def get_active_sources(db: AsyncSession):
+        """Get all active sources"""
+        from app.database.models import MedicalSource
+        
+        result = await db.execute(
+            select(MedicalSource)
+            .where(MedicalSource.is_active == True)
+            .order_by(MedicalSource.authority_level.desc())
+        )
+        return result.scalars().all()
+
+
+class MedicalConditionRepository:
+    """Repository for MedicalCondition operations"""
+    
+    @staticmethod
+    async def create_condition(
+        db: AsyncSession,
+        name: str,
+        icd10_code: str,
+        **kwargs
+    ):
+        """Create a medical condition"""
+        from app.database.models import MedicalCondition
+        
+        condition = MedicalCondition(
+            name=name,
+            icd10_code=icd10_code,
+            **kwargs
+        )
+        db.add(condition)
+        await db.commit()
+        await db.refresh(condition)
+        logger.info(f"Created condition: {name}")
+        return condition
+    
+    @staticmethod
+    async def get_condition(db: AsyncSession, condition_id: int):
+        """Get condition by ID"""
+        from app.database.models import MedicalCondition
+        
+        result = await db.execute(
+            select(MedicalCondition).where(MedicalCondition.id == condition_id)
+        )
+        return result.scalar_one_or_none()
+    
+    @staticmethod
+    async def get_by_name(db: AsyncSession, name: str):
+        """Get condition by name"""
+        from app.database.models import MedicalCondition
+        
+        result = await db.execute(
+            select(MedicalCondition).where(MedicalCondition.name == name)
+        )
+        return result.scalar_one_or_none()
+    
+    @staticmethod
+    async def search_conditions(db: AsyncSession, name: str):
+        """Search conditions by name"""
+        from app.database.models import MedicalCondition
+        
+        result = await db.execute(
+            select(MedicalCondition)
+            .where(MedicalCondition.name.ilike(f"%{name}%"))
+            .where(MedicalCondition.is_active == True)
+        )
+        return result.scalars().all()
+
+
+class MedicalFactRepository:
+    """Repository for MedicalFact operations"""
+    
+    @staticmethod
+    async def create_fact(
+        db: AsyncSession,
+        condition_id: int,
+        source_id: int,
+        fact_type: str,
+        fact_text: str,
+        **kwargs
+    ):
+        """Create a medical fact"""
+        from app.database.models import MedicalFact
+        
+        fact = MedicalFact(
+            condition_id=condition_id,
+            source_id=source_id,
+            fact_type=fact_type,
+            fact_text=fact_text,
+            **kwargs
+        )
+        db.add(fact)
+        await db.commit()
+        await db.refresh(fact)
+        return fact
+    
+    @staticmethod
+    async def get_verified_facts(
+        db: AsyncSession,
+        condition_id: int,
+        fact_type: Optional[str] = None
+    ):
+        """Get verified facts for a condition"""
+        from app.database.models import MedicalFact
+        
+        query = select(MedicalFact).where(
+            (MedicalFact.condition_id == condition_id) &
+            (MedicalFact.is_active == True)
+        )
+        
+        if fact_type:
+            query = query.where(MedicalFact.fact_type == fact_type)
+        
+        result = await db.execute(query)
+        return result.scalars().all()
+
+
+class ExtractedClaimRepository:
+    """Repository for ExtractedClaim operations"""
+    
+    @staticmethod
+    async def create_claim(
+        db: AsyncSession,
+        claim_text: str,
+        claim_type: str,
+        **kwargs
+    ):
+        """Create an extracted claim"""
+        from app.database.models import ExtractedClaim
+        
+        claim = ExtractedClaim(
+            claim_text=claim_text,
+            claim_type=claim_type,
+            **kwargs
+        )
+        db.add(claim)
+        await db.commit()
+        await db.refresh(claim)
+        return claim
+    
+    @staticmethod
+    async def get_claims_for_response(
+        db: AsyncSession,
+        response_id: str
+    ):
+        """Get claims for a specific response"""
+        from app.database.models import ExtractedClaim
+        
+        result = await db.execute(
+            select(ExtractedClaim).where(ExtractedClaim.response_id == response_id)
+        )
+        return result.scalars().all()
+
+
+class FactCheckResultRepository:
+    """Repository for FactCheckResult operations"""
+    
+    @staticmethod
+    async def create_result(
+        db: AsyncSession,
+        verification_status: str,
+        **kwargs
+    ):
+        """Create a fact check result"""
+        from app.database.models import FactCheckResult
+        
+        result_obj = FactCheckResult(
+            verification_status=verification_status,
+            **kwargs
+        )
+        db.add(result_obj)
+        await db.commit()
+        await db.refresh(result_obj)
+        return result_obj
+    
+    @staticmethod
+    async def get_results_for_response(
+        db: AsyncSession,
+        response_validation_id: int
+    ):
+        """Get all check results for a response"""
+        from app.database.models import FactCheckResult
+        
+        result = await db.execute(
+            select(FactCheckResult).where(
+                FactCheckResult.response_validation_id == response_validation_id
+            )
+        )
+        return result.scalars().all()
+
+
+class ValidationRuleRepository:
+    """Repository for ValidationRule operations"""
+    
+    @staticmethod
+    async def create_rule(
+        db: AsyncSession,
+        rule_type: str,
+        rule_pattern: str,
+        **kwargs
+    ):
+        """Create a validation rule"""
+        from app.database.models import ValidationRule
+        
+        rule = ValidationRule(
+            rule_type=rule_type,
+            rule_pattern=rule_pattern,
+            **kwargs
+        )
+        db.add(rule)
+        await db.commit()
+        await db.refresh(rule)
+        return rule
+    
+    @staticmethod
+    async def get_active_rules(
+        db: AsyncSession,
+        rule_type: Optional[str] = None
+    ):
+        """Get active validation rules"""
+        from app.database.models import ValidationRule
+        
+        query = select(ValidationRule).where(ValidationRule.is_active == True)
+        
+        if rule_type:
+            query = query.where(ValidationRule.rule_type == rule_type)
+        
+        result = await db.execute(
+            query.order_by(ValidationRule.priority.desc())
+        )
+        return result.scalars().all()
+
+
+class SourceValidationCacheRepository:
+    """Repository for SourceValidationCache operations"""
+    
+    @staticmethod
+    async def create_cache(
+        db: AsyncSession,
+        query_hash: str,
+        cache_key: str,
+        result_data: Dict[str, Any],
+        **kwargs
+    ):
+        """Create a validation cache entry"""
+        from app.database.models import SourceValidationCache
+        
+        cache_entry = SourceValidationCache(
+            query_hash=query_hash,
+            cache_key=cache_key,
+            result_data=result_data,
+            **kwargs
+        )
+        db.add(cache_entry)
+        await db.commit()
+        await db.refresh(cache_entry)
+        return cache_entry
+    
+    @staticmethod
+    async def get_by_hash(
+        db: AsyncSession,
+        query_hash: str
+    ):
+        """Get cache entry by hash"""
+        from app.database.models import SourceValidationCache
+        
+        result = await db.execute(
+            select(SourceValidationCache).where(
+                SourceValidationCache.query_hash == query_hash
+            )
+        )
+        return result.scalar_one_or_none()

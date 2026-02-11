@@ -1,6 +1,7 @@
 import logging
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +14,14 @@ class ValidationResult(BaseModel):
     validation_message: str
     high_risk_keywords_detected: List[str] = []
     emergency_keywords_detected: List[str] = []
+    verified_claims: List[str] = []
+    contradicted_claims: List[str] = []
+    accuracy_score: Optional[float] = None
+    appropriateness_score: Optional[float] = None
+    semantic_confidence: Optional[float] = None
+    sources_used: List[str] = []
+    fact_checks: List[Dict[str, Any]] = []
+    escalation_trigger: Optional[str] = None
 
 
 class MedicalValidationService:
@@ -23,7 +32,9 @@ class MedicalValidationService:
         "emergency", "urgent", "hospital", "ambulance", "cardiac", "heart attack",
         "stroke", "seizure", "unconscious", "bleeding", "severe bleeding",
         "poisoning", "overdose", "suicide", "self-harm", "death",
-        "serious injury", "accident", "trauma"
+        "serious injury", "accident", "trauma",
+        "chest pain", "shortness of breath", "difficulty breathing",
+        "severe pain", "losing consciousness", "unresponsive"
     ]
     
     # High-risk keywords that may trigger escalation
@@ -45,18 +56,24 @@ class MedicalValidationService:
     ]
     
     @staticmethod
-    def validate_response(
+    async def validate_response(
+        db: AsyncSession,
         user_query: str,
         bot_response: str,
-        confidence_score: float = 0.5
+        confidence_score: float = 0.5,
+        use_semantic_validation: bool = True,
+        llm_model: str = "gpt-3.5-turbo"
     ) -> ValidationResult:
         """
-        Validate a bot response against medical safety criteria
+        Validate a bot response against medical safety criteria using hybrid approach
         
         Args:
+            db: Database session
             user_query: The original user query
             bot_response: The bot's response
             confidence_score: Confidence score of the response (0-1)
+            use_semantic_validation: Enable semantic validation
+            llm_model: LLM model to use
         
         Returns:
             ValidationResult with risk assessment
@@ -65,58 +82,207 @@ class MedicalValidationService:
             query_lower = user_query.lower() if user_query else ""
             response_lower = bot_response.lower() if bot_response else ""
             
-            # Check for emergency keywords
+            # Initialize variables (used throughout function)
+            verified_claims = []
+            contradicted_claims = []
+            accuracy_score = confidence_score
+            semantic_confidence = confidence_score
+            sources_used = []
+            fact_checks = []
+            
+            # Layer 1: Emergency keywords (instant escalation)
             emergency_keywords = MedicalValidationService._find_keywords(
                 query_lower + " " + response_lower,
                 MedicalValidationService.EMERGENCY_KEYWORDS
             )
             
-            # Check for high-risk keywords
+            if emergency_keywords:
+                # Check if emergency keywords are in query or response
+                emergency_in_query = any(kw in query_lower for kw in MedicalValidationService.EMERGENCY_KEYWORDS)
+                emergency_in_response = any(kw in response_lower for kw in MedicalValidationService.EMERGENCY_KEYWORDS)
+                
+                # Check if response appropriately addresses emergency
+                emergency_appropriate_responses = [
+                    "emergency", "hospital", "ambulance", "call", "seek", "doctor", 
+                    "urgent", "immediate", "911", "emt", "paramedic"
+                ]
+                has_appropriate_response = any(resp in response_lower for resp in emergency_appropriate_responses)
+                
+                # If emergency in response -> always critical (e.g., suggesting emergency when not appropriate)
+                if emergency_in_response and not emergency_in_query:
+                    risk_level = "critical"
+                # If emergency in query, check response appropriateness
+                elif emergency_in_query:
+                    # Check if response explicitly discourages emergency care
+                    danger_patterns = [
+                        "don't go", "avoid hospital", "don't call", "don't seek", 
+                        "ignore", "it's nothing", "not serious", "just relax"
+                    ]
+                    explicitly_dangerous = any(pattern in response_lower for pattern in danger_patterns)
+                    
+                    if explicitly_dangerous:
+                        # Response discourages emergency care -> critical
+                        risk_level = "critical"
+                    else:
+                        # Response inadequately addresses emergency -> high (still escalate)
+                        risk_level = "high"
+                else:
+                    risk_level = "critical"
+                
+                return ValidationResult(
+                    risk_level=risk_level,
+                    confidence_score=1.0,
+                    requires_escalation=True,
+                    validation_message=f"Emergency situation detected: {', '.join(emergency_keywords[:3])}",
+                    emergency_keywords_detected=emergency_keywords,
+                    escalation_trigger="emergency_keywords",
+                    semantic_confidence=1.0,
+                    accuracy_score=1.0 if has_appropriate_response else 0.0,
+                    appropriateness_score=1.0 if has_appropriate_response else 0.0
+                )
+            
+            # Layer 2: High-risk keywords
             high_risk_keywords = MedicalValidationService._find_keywords(
                 query_lower,
                 MedicalValidationService.HIGH_RISK_KEYWORDS
             )
             
-            # Check for medical conditions
             medical_conditions = MedicalValidationService._find_keywords(
                 query_lower,
                 MedicalValidationService.MEDICAL_CONDITIONS
             )
             
-            # Determine risk level and escalation
+            # Initial risk assessment
             requires_escalation = False
             risk_level = "low"
-            validation_message = "Response is appropriate"
+            escalation_trigger = None
             
-            # Emergency keywords always trigger escalation
-            if emergency_keywords:
-                risk_level = "critical"
-                requires_escalation = True
-                validation_message = f"Emergency situation detected: {', '.join(emergency_keywords[:3])}"
+            # Check for dangerous medication combinations in RESPONSE (highest priority)
+            danger_patterns = [
+                ("aspirin", ["child", "children", "kid", "infant", "baby", "toddler", "newborn"]),
+                ("antibiotic", ["viral", "virus", "cold", "flu", "dengue"]),
+                ("paracetamol", ["overdose", "liver disease", "hepatitis", "cirrhosis"]),
+                ("ibuprofen", ["kidney disease", "renal failure", "heart disease"]),
+            ]
             
-            # High-risk keywords with low confidence trigger escalation
-            elif high_risk_keywords and confidence_score < 0.7:
-                risk_level = "high"
-                requires_escalation = True
-                validation_message = f"High-risk medical topic with low confidence: {', '.join(high_risk_keywords[:2])}"
+            dangerous_combo_found = False
+            for medication, contraindicated_populations in danger_patterns:
+                if medication in response_lower:
+                    # Check if any contraindicated population is mentioned in query
+                    for pop in contraindicated_populations:
+                        if pop in query_lower:
+                            contradicted_claims.append(f"'{medication}' is contraindicated for {pop}")
+                            risk_level = "high"
+                            requires_escalation = True
+                            escalation_trigger = "dangerous_medication_combination"
+                            dangerous_combo_found = True
+                            break
+                if dangerous_combo_found:
+                    break
             
-            # Medical conditions require attention
-            elif high_risk_keywords or medical_conditions:
-                risk_level = "medium"
-                if confidence_score < 0.5:
+            # If dangerous combination detected, skip rest of analysis
+            if not dangerous_combo_found:
+                if high_risk_keywords and confidence_score < 0.7:
+                    risk_level = "high"
                     requires_escalation = True
-                    validation_message = "Medical condition mentioned with low confidence"
-                else:
-                    validation_message = "Medical condition mentioned - response monitored"
+                    escalation_trigger = "high_risk_low_confidence"
+                
+                elif high_risk_keywords or medical_conditions:
+                    # Medical conditions detected - assess more carefully
+                    if confidence_score < 0.5:
+                        risk_level = "high"
+                        requires_escalation = True
+                        escalation_trigger = "medical_condition_low_confidence"
+                    elif confidence_score >= 0.7:
+                        # Check for good treatments/advice patterns in response
+                        good_practices = [
+                            "paracetamol", "acetaminophen", "ibuprofen", "rest", "fluids", "water", "sleep",
+                            "hydrate", "hydration", "consult doctor", "see doctor", "seek medical",
+                            "nets", "mosquito", "vaccination", "vaccine", "preventive", "prevention"
+                        ]
+                        has_good_advice = any(practice in response_lower for practice in good_practices)
+                        
+                        # Check response for dangerous advice patterns
+                        dangerous_patterns_in_response = [
+                            "avoid doctor", "don't see doctor", "don't seek help",
+                            "stop medication", "skip prescription", "don't treat"
+                        ]
+                        has_dangerous_advice = any(pattern in response_lower for pattern in dangerous_patterns_in_response)
+                        
+                        if has_dangerous_advice:
+                            risk_level = "high"
+                            requires_escalation = True
+                            escalation_trigger = "dangerous_advice_pattern"
+                        elif has_good_advice:
+                            risk_level = "low"
+                        else:
+                            risk_level = "medium"
+                    else:
+                        # 0.5 <= confidence < 0.7
+                        risk_level = "medium"
+                
+                elif confidence_score < 0.3:
+                    risk_level = "high"
+                    requires_escalation = True
+                    escalation_trigger = "very_low_confidence"
             
-            # Low confidence on any query
-            elif confidence_score < 0.3:
-                risk_level = "medium"
-                requires_escalation = True
-                validation_message = "Very low confidence - requires expert review"
+            if use_semantic_validation and not requires_escalation:
+                try:
+                    from app.services.semantic_validation_engine import SemanticValidator
+                    validator = SemanticValidator()
+                    semantic_result = await validator.validate_response(
+                        db=db,
+                        user_query=user_query,
+                        response_text=bot_response
+                    )
+                    
+                    verified_claims = semantic_result.get("verified_claims", [])
+                    contradicted_claims.extend(semantic_result.get("contradicted_claims", []))
+                    accuracy_score = semantic_result.get("accuracy_score", confidence_score)
+                    semantic_confidence = semantic_result.get("confidence", confidence_score)
+                    sources_used = semantic_result.get("sources_used", [])
+                    fact_checks = semantic_result.get("fact_checks", [])
+                    
+                    # If contradictions found, escalate
+                    if semantic_result.get("contradicted_claims"):
+                        risk_level = "high"
+                        requires_escalation = True
+                        escalation_trigger = "contradictions_detected"
+                    
+                    # Low accuracy indicates unreliable response
+                    elif accuracy_score < 0.5:
+                        risk_level = "high"
+                        requires_escalation = True
+                        escalation_trigger = "low_accuracy_response"
+                    
+                    # High accuracy with verified claims - downgrade risk
+                    elif accuracy_score > 0.7 and not contradicted_claims and verified_claims:
+                        risk_level = "low"
+                        requires_escalation = False
+                        escalation_trigger = None
+                
+                except Exception as e:
+                    logger.warning(f"Semantic validation failed (non-blocking): {e}")
+            
+            validation_message = "Response is appropriate"
+            if requires_escalation:
+                if escalation_trigger == "emergency_keywords":
+                    validation_message = f"Emergency: {', '.join(emergency_keywords[:2])}"
+                elif escalation_trigger == "dangerous_medication_combination":
+                    validation_message = f"Dangerous medication advice: {', '.join(contradicted_claims[:2])}"
+                elif escalation_trigger == "contradictions_detected":
+                    validation_message = f"Contradictions found: {', '.join(contradicted_claims[:2])}"
+                elif escalation_trigger == "low_accuracy_response":
+                    validation_message = "Low accuracy response - requires review"
+                elif escalation_trigger == "high_risk_low_confidence":
+                    validation_message = f"High-risk with low confidence"
+                elif escalation_trigger == "very_low_confidence":
+                    validation_message = "Very low confidence"
+                elif escalation_trigger == "medical_condition_low_confidence":
+                    validation_message = "Medical condition with low confidence"
             
             logger.info(
-                f"[VALIDATION] Query: '{user_query[:50]}...' | "
+                f"[VALIDATION] Query: '{user_query[:40]}...' | "
                 f"Risk: {risk_level} | Escalate: {requires_escalation} | "
                 f"Confidence: {confidence_score}"
             )
@@ -127,7 +293,15 @@ class MedicalValidationService:
                 requires_escalation=requires_escalation,
                 validation_message=validation_message,
                 high_risk_keywords_detected=high_risk_keywords + medical_conditions,
-                emergency_keywords_detected=emergency_keywords
+                emergency_keywords_detected=emergency_keywords,
+                verified_claims=verified_claims,
+                contradicted_claims=contradicted_claims,
+                accuracy_score=accuracy_score,
+                appropriateness_score=accuracy_score,
+                semantic_confidence=semantic_confidence,
+                sources_used=sources_used,
+                fact_checks=fact_checks,
+                escalation_trigger=escalation_trigger
             )
         
         except Exception as e:
@@ -138,7 +312,8 @@ class MedicalValidationService:
                 requires_escalation=True,
                 validation_message=f"Validation error: {str(e)}",
                 high_risk_keywords_detected=[],
-                emergency_keywords_detected=[]
+                emergency_keywords_detected=[],
+                escalation_trigger="validation_error"
             )
     
     @staticmethod

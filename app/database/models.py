@@ -78,8 +78,6 @@ class Conversation(Base):
 
     created_at = Column(DateTime, default=datetime.utcnow)
     response_time_ms = Column(Integer, nullable=True)
-<<<<<<< HEAD
-=======
     
     # Validation fields
     validation_id = Column(Integer, ForeignKey("response_validations.id"), nullable=True)
@@ -89,7 +87,6 @@ class Conversation(Base):
     escalation_id = Column(Integer, ForeignKey("escalated_cases.id"), nullable=True)
     high_risk_keywords = Column(JSON, nullable=True)
     medical_disclaimer_shown = Column(Boolean, default=False)
->>>>>>> origin/jp2
 
     user = relationship("User", back_populates="conversations")
 
@@ -259,8 +256,6 @@ class ResponseMetric(Base):
 
     def __repr__(self):
         return f"<ResponseMetric {self.id} - {self.quality_rating}>"
-<<<<<<< HEAD
-=======
 
 
 class ResponseValidation(Base):
@@ -394,4 +389,137 @@ class DisclaimerTracking(Base):
     
     def __repr__(self):
         return f"<DisclaimerTracking {self.user_id} - {self.disclaimer_id}>"
->>>>>>> origin/jp2
+
+# ============================================================================
+# Medical Knowledge Base Models (New - for source-based validation)
+# ============================================================================
+
+class MedicalSource(Base):
+    """Store authoritative medical sources for validation"""
+    __tablename__ = "medical_sources"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=False, unique=True, index=True)
+    url = Column(String(500), nullable=True)
+    description = Column(Text, nullable=True)
+    authority_level = Column(Integer, default=1)  # 1=primary, 2=secondary
+    is_active = Column(Boolean, default=True, index=True)
+    last_updated = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    def __repr__(self):
+        return f"<MedicalSource {self.id} - {self.name}>"
+
+
+class MedicalCondition(Base):
+    """Store medical conditions in knowledge base"""
+    __tablename__ = "medical_conditions"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=False, unique=True, index=True)
+    icd10_code = Column(String(20), nullable=True)
+    description = Column(Text, nullable=True)
+    severity = Column(String(50), nullable=True)  # mild, moderate, severe
+    symptoms = Column(JSON, nullable=True)
+    treatments = Column(JSON, nullable=True)
+    contraindications = Column(JSON, nullable=True)
+    is_emergency = Column(Boolean, default=False)
+    is_active = Column(Boolean, default=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    def __repr__(self):
+        return f"<MedicalCondition {self.id} - {self.name}>"
+
+
+class MedicalFact(Base):
+    """Store individual verifiable medical facts"""
+    __tablename__ = "medical_facts"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    condition_id = Column(Integer, ForeignKey("medical_conditions.id"), nullable=False, index=True)
+    source_id = Column(Integer, ForeignKey("medical_sources.id"), nullable=False, index=True)
+    
+    fact_type = Column(String(50), nullable=False)  # symptom, treatment, prevention, warning
+    fact_text = Column(Text, nullable=False)
+    verification_level = Column(String(50), default="verified")  # verified, likely, unverified
+    confidence_score = Column(Float, default=0.9)
+    
+    is_active = Column(Boolean, default=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    condition = relationship("MedicalCondition")
+    source = relationship("MedicalSource")
+    
+    def __repr__(self):
+        return f"<MedicalFact {self.id} - {self.fact_type}>"
+
+
+class ExtractedClaim(Base):
+    """Store claims extracted from LLM responses"""
+    __tablename__ = "extracted_claims"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    response_id = Column(String(255), nullable=True, index=True)
+    
+    claim_text = Column(Text, nullable=False)
+    claim_type = Column(String(50), nullable=False)  # symptom, treatment, prevention, warning
+    confidence_score = Column(Float, nullable=True)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    def __repr__(self):
+        return f"<ExtractedClaim {self.id}>"
+
+
+class FactCheckResult(Base):
+    """Store results of fact-checking"""
+    __tablename__ = "fact_check_results"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    claim_id = Column(Integer, ForeignKey("extracted_claims.id"), nullable=True)
+    response_validation_id = Column(Integer, ForeignKey("response_validations.id"), nullable=True)
+    
+    verification_status = Column(String(50), default="unverified")  # verified, contradicted, concerning, unverifiable
+    matching_facts = Column(JSON, nullable=True)
+    contradicting_facts = Column(JSON, nullable=True)
+    confidence_score = Column(Float, nullable=True)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    def __repr__(self):
+        return f"<FactCheckResult {self.id} - {self.verification_status}>"
+
+
+class ValidationRule(Base):
+    """Store custom validation rules"""
+    __tablename__ = "validation_rules"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    rule_type = Column(String(100), nullable=False)  # e.g., "emergency_keyword", "drug_interaction"
+    rule_pattern = Column(String(500), nullable=False)
+    severity = Column(String(50), default="medium")  # low, medium, high, critical
+    is_active = Column(Boolean, default=True, index=True)
+    priority = Column(Integer, default=100)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    def __repr__(self):
+        return f"<ValidationRule {self.id} - {self.rule_type}>"
+
+
+class SourceValidationCache(Base):
+    """Cache for source validation queries"""
+    __tablename__ = "source_validation_cache"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    query_hash = Column(String(64), nullable=False, unique=True, index=True)
+    cache_key = Column(String(500), nullable=False)
+    
+    result_data = Column(JSON, nullable=True)
+    hit_count = Column(Integer, default=1)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    last_accessed = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    def __repr__(self):
+        return f"<SourceValidationCache {self.id}>"

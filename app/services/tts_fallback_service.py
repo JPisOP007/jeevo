@@ -56,7 +56,7 @@ class TTSFallbackService:
             return audio_bytes, "elevenlabs"
         except Exception as e:
             logger.warning(f"ElevenLabs TTS failed: {e}")
->>>>>>> origin/jp2
+>>>>>>> origin/jp2 removed
 
         for provider in self.fallback_providers:
             try:
@@ -88,7 +88,7 @@ class TTSFallbackService:
                 continue
 
         logger.error("❌ All TTS providers failed. No audio generated.")
->>>>>>> origin/jp2
+>>>>>>> origin/jp2 removed
         return None, "none"
 
     def _gtts_generate(self, text: str, language: str = "en") -> bytes:
@@ -144,3 +144,4 @@ class TTSFallbackService:
             return False
 
 tts_fallback_service = TTSFallbackService()
+

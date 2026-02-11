@@ -23,7 +23,7 @@ from app.database.repositories import (
     UserRepository, ConversationRepository, FamilyMemberRepository,
     ResponseValidationRepository
 )
->>>>>>> origin/jp2
+>>>>>>> origin/jp2 removed
 from app.logic.multimodal_router import MultimodalRouter
 from app.logic.language_manager import LanguageManager
 from app.services.jeevo_onboarding import jeevo_onboarding
@@ -1077,7 +1077,7 @@ async def process_message(message: WhatsAppMessage, db: AsyncSession) -> None:
         # Update response object with final content
         response["content"] = final_response_content
 
->>>>>>> origin/jp2
+>>>>>>> origin/jp2 removed
         # For audio inputs, use STT-detected language (if available) for responses
         # This ensures text and audio are in the language the user spoke
         response_language = response.get("language", user_language)
@@ -1098,7 +1098,7 @@ async def process_message(message: WhatsAppMessage, db: AsyncSession) -> None:
 <<<<<<< HEAD
                     logger.info(f"[AUTO-VOICE] Response text length: {len(response['content'])} characters")
 =======
->>>>>>> origin/jp2
+>>>>>>> origin/jp2 removed
                     from app.services.tts_fallback_service import tts_fallback_service
 
                     audio_bytes, provider = await tts_fallback_service.text_to_speech_with_fallback(
@@ -1144,7 +1144,7 @@ async def process_message(message: WhatsAppMessage, db: AsyncSession) -> None:
 
                 except Exception as e:
                     logger.warning(f"[AUTO-VOICE] Failed to auto-generate audio: {e}, using text fallback")
->>>>>>> origin/jp2
+>>>>>>> origin/jp2 removed
 
         if response["type"] == "text":
 
@@ -1177,7 +1177,7 @@ async def process_message(message: WhatsAppMessage, db: AsyncSession) -> None:
                     # Clean up temp file after successful send
                     try:
                         await asyncio.sleep(0.5)
->>>>>>> origin/jp2
+>>>>>>> origin/jp2 removed
                         if os.path.exists(response["audio_path"]):
                             os.remove(response["audio_path"])
                             logger.debug(f"[VOICE] Cleaned up temp file: {response['audio_path']}")
@@ -1189,7 +1189,7 @@ async def process_message(message: WhatsAppMessage, db: AsyncSession) -> None:
                     logger.error(f"[VOICE] ❌ Failed to send voice message: {e}", exc_info=True)
 =======
                     logger.error(f"[VOICE] Failed to send voice message: {e}", exc_info=True)
->>>>>>> origin/jp2
+>>>>>>> origin/jp2 removed
                     # Fallback to text if voice fails (text already sent)
                     bot_response = f"[Voice Failed→Text] {response['content']}"
 
@@ -1235,7 +1235,7 @@ async def process_message(message: WhatsAppMessage, db: AsyncSession) -> None:
                     # Clean up temp file after successful send (with delay to ensure upload completes)
                     try:
                         await asyncio.sleep(0.5)  # Give upload time to finish
->>>>>>> origin/jp2
+>>>>>>> origin/jp2 removed
                         if os.path.exists(response["audio_path"]):
                             os.remove(response["audio_path"])
                             logger.debug(f"[VOICE] Cleaned up temp file: {response['audio_path']}")
@@ -1247,7 +1247,7 @@ async def process_message(message: WhatsAppMessage, db: AsyncSession) -> None:
                     logger.error(f"[VOICE] ❌ Failed to send voice message: {e}", exc_info=True)
 =======
                     logger.error(f"[VOICE] Failed to send voice message: {e}", exc_info=True)
->>>>>>> origin/jp2
+>>>>>>> origin/jp2 removed
                     # Fallback to text if voice fails
                     fallback_text = f"Audio response unavailable. {response['content']}"
                     await whatsapp_service.send_text_message(
@@ -1294,7 +1294,7 @@ async def process_message(message: WhatsAppMessage, db: AsyncSession) -> None:
                 escalation_id=escalation_id,
                 high_risk_keywords=validation_result.high_risk_keywords_detected + validation_result.emergency_keywords_detected,
                 medical_disclaimer_shown=disclaimer_shown
->>>>>>> origin/jp2
+>>>>>>> origin/jp2 removed
             )
         except Exception as e:
             logger.error(f"[DB] Failed to log conversation: {e}")

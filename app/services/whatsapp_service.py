@@ -224,7 +224,7 @@ class WhatsAppService:
                     
                     async with httpx.AsyncClient() as client:
                         logger.debug(f"Posting to {upload_url}")
->>>>>>> origin/jp2
+>>>>>>> origin/jp2 removed
                         upload_response = await client.post(
                             upload_url,
                             headers={
@@ -263,7 +263,7 @@ class WhatsAppService:
                         
                         upload_data = upload_response.json()
                         logger.debug(f"Upload response: {upload_data}")
->>>>>>> origin/jp2
+>>>>>>> origin/jp2 removed
                         
                         # WhatsApp returns media ID in the response
                         media_id = upload_data.get("id") or upload_data.get("h")
@@ -324,7 +324,7 @@ class WhatsAppService:
                 raise ValueError(f"Could not upload audio file: {str(e)}")
 
         if not audio_url:
->>>>>>> origin/jp2
+>>>>>>> origin/jp2 removed
             raise ValueError("Must provide either audio_path or audio_url")
 
         # Build payload: prefer sending using uploaded media ID (more reliable),
@@ -352,7 +352,7 @@ class WhatsAppService:
             logger.info(f"[AUDIO] Using uploaded media ID: {uploaded_media_id}")
 =======
         if 'uploaded_media_id' in locals() and uploaded_media_id:
->>>>>>> origin/jp2
+>>>>>>> origin/jp2 removed
             audio_obj = {"id": uploaded_media_id}
             if is_voice_native:
                 audio_obj["voice"] = True
@@ -362,7 +362,7 @@ class WhatsAppService:
             logger.info(f"[AUDIO] Using media URL")
 =======
         else:
->>>>>>> origin/jp2
+>>>>>>> origin/jp2 removed
             audio_obj = {"link": audio_url}
             if is_voice_native:
                 audio_obj["voice"] = True
@@ -381,7 +381,7 @@ class WhatsAppService:
             try:
                 logger.debug(f"Sending audio message to {to_number}")
                 logger.debug(f"Payload: {payload}")
->>>>>>> origin/jp2
+>>>>>>> origin/jp2 removed
                 response = await client.post(
                     url,
                     headers=self.headers,
@@ -410,7 +410,7 @@ class WhatsAppService:
                 raise
             except httpx.HTTPError as e:
                 logger.error(f"Error sending audio message: {e}", exc_info=True)
->>>>>>> origin/jp2
+>>>>>>> origin/jp2 removed
                 raise
 
     async def download_media(self, media_id: str, media_type: str) -> str:
