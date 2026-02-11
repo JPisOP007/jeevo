@@ -3,6 +3,13 @@ from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+# Medical RAG integration
+try:
+    from app.services.medical_rag_service import get_medical_rag_service
+    MEDICAL_RAG_AVAILABLE = True
+except ImportError:
+    MEDICAL_RAG_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 
@@ -241,6 +248,29 @@ class MedicalValidationService:
                     accuracy_score = semantic_result.get("accuracy_score", confidence_score)
                     semantic_confidence = semantic_result.get("confidence", confidence_score)
                     sources_used = semantic_result.get("sources_used", [])
+                    
+                    # Add RAG validation if available
+                    if MEDICAL_RAG_AVAILABLE:
+                        try:
+                            rag_service = get_medical_rag_service()
+                            if rag_service.is_available():
+                                rag_validation = rag_service.validate_with_rag(
+                                    user_query=user_query,
+                                    bot_response=bot_response
+                                )
+                                
+                                if rag_validation.get('validated'):
+                                    # Update accuracy with RAG validation
+                                    rag_accuracy = rag_validation.get('accuracy_score', 0.0)
+                                    accuracy_score = (accuracy_score + rag_accuracy) / 2  # Average both
+                                    
+                                    # Add RAG sources
+                                    rag_sources = rag_validation.get('rag_sources', [])
+                                    sources_used.extend([f"RAG: {src}" for src in rag_sources])
+                                    
+                                    logger.info(f"✅ RAG validation - Accuracy: {rag_accuracy:.2f}, Sources: {len(rag_sources)}")
+                        except Exception as e:
+                            logger.warning(f"RAG validation error: {e}")
                     fact_checks = semantic_result.get("fact_checks", [])
                     
                     # If contradictions found, escalate

@@ -10,6 +10,15 @@ import asyncio
 
 logger = logging.getLogger(__name__)
 
+# Medical RAG integration
+try:
+    from app.services.medical_rag_service import get_medical_rag_service
+    MEDICAL_RAG_AVAILABLE = True
+    logger.info("✅ Medical RAG service available")
+except ImportError as e:
+    logger.warning(f"⚠️ Medical RAG not available: {e}")
+    MEDICAL_RAG_AVAILABLE = False
+
 class HealthServiceTools:
 
     def __init__(self):
@@ -723,6 +732,10 @@ class IntelligentOrchestrator:
         self.groq_model = model
         self.tools = HealthServiceTools()
         self._gemini_chat = None
+        
+        # Initialize Medical RAG service
+        self.medical_rag = get_medical_rag_service() if MEDICAL_RAG_AVAILABLE else None
+        
         self._tool_map = {
             "symptoms": self.tools.check_symptoms,
             "medicine": self.tools.get_medicine_info,
@@ -1043,6 +1056,23 @@ class IntelligentOrchestrator:
                 return ""
             
             logger.info(f"Processing message: {user_message[:50]}...")
+            
+            # Try Medical RAG first for medical queries
+            if self.medical_rag and self.medical_rag.is_available():
+                if self.medical_rag.is_medical_query(user_message):
+                    logger.info("🏥 Detected medical query - using RAG")
+                    rag_result = self.medical_rag.get_grounded_response(
+                        user_message,
+                        top_k=3,
+                        min_confidence="low"
+                    )
+                    
+                    if rag_result and rag_result.get('answer'):
+                        logger.info(f"✅ RAG response | Confidence: {rag_result['confidence']} | Sources: {len(rag_result['sources'])}")
+                        return rag_result['answer']
+                    else:
+                        logger.info("⚠️ RAG didn't provide answer, falling back to tools")
+            
             classification = await self._classify_with_gemini(user_message)
             intent = classification.get("intent", "symptoms")
             logger.info(f"Gemini detected intent: {intent}")
